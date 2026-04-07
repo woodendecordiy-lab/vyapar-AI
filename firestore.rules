@@ -1,0 +1,183 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required, immutable) - Firebase Auth UID
+    //   - email: string (required) - User email
+    //   - displayName: string (optional) - User name
+    //   - role: string (required) - 'user' or 'admin'
+    //   - createdAt: string (required, immutable) - ISO 8601 date string
+    //   - isSubscribed: boolean (optional)
+    //   - subscriptionEndDate: string (optional) - ISO 8601 date string
+    //
+    // Collection: bills
+    // Document ID: {billId}
+    // Fields:
+    //   - userId: string (required, immutable) - Owner of the bill
+    //   - totalAmount: number (required)
+    //   - taxAmount: number (optional)
+    //   - items: list (optional) - Serialized JSON strings of items
+    //   - imageUrl: string (optional)
+    //   - date: string (required) - ISO 8601 date string
+    //   - status: string (required) - 'pending', 'paid', 'audited'
+    //   - rawText: string (optional) - Raw extracted text
+    //
+    // Collection: khataCustomers
+    // Document ID: {customerId}
+    // Fields:
+    //   - userId: string (required, immutable)
+    //   - name: string (required)
+    //   - phone: string (required)
+    //   - balance: number (required)
+    //   - lastUpdated: string (required)
+    //
+    // Collection: khataTransactions
+    // Document ID: {transactionId}
+    // Fields:
+    //   - userId: string (required, immutable)
+    //   - customerId: string (required, immutable)
+    //   - amount: number (required)
+    //   - type: string (required) - 'credit' or 'payment'
+    //   - date: string (required)
+    //   - description: string (optional)
+    //
+    // ===============================================================
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+    
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid;
+    }
+    
+    function uidNotModified() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid;
+    }
+    
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+    
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+        (request.auth.token.email == "guptahappy513@gmail.com" && request.auth.token.email_verified == true)
+      );
+    }
+    
+    // Domain Validators
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email', 'role', 'createdAt']) &&
+             data.uid is string && data.uid.size() > 0 && data.uid.size() < 100 &&
+             data.email is string && isValidEmail(data.email) && data.email.size() < 100 &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
+             data.role in ['user', 'admin'] &&
+             isValidDateString(data.createdAt) &&
+             (!('isSubscribed' in data) || data.isSubscribed is bool) &&
+             (!('subscriptionEndDate' in data) || isValidDateString(data.subscriptionEndDate));
+    }
+    
+    function isValidBill(data) {
+      return hasRequiredFields(['userId', 'totalAmount', 'date', 'status']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 100 &&
+             data.totalAmount is number && data.totalAmount >= 0 &&
+             (!('taxAmount' in data) || (data.taxAmount is number && data.taxAmount >= 0)) &&
+             (!('items' in data) || (data.items is list && data.items.size() <= 100)) &&
+             (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() < 1000)) &&
+             isValidDateString(data.date) &&
+             data.status in ['pending', 'paid', 'audited'] &&
+             (!('rawText' in data) || (data.rawText is string && data.rawText.size() < 10000));
+    }
+
+    function isValidKhataCustomer(data) {
+      return hasRequiredFields(['userId', 'name', 'balance', 'lastUpdated']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 100 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() < 20)) &&
+             data.balance is number &&
+             isValidDateString(data.lastUpdated);
+    }
+
+    function isValidKhataTransaction(data) {
+      return hasRequiredFields(['userId', 'customerId', 'amount', 'type', 'date']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 100 &&
+             data.customerId is string && data.customerId.size() > 0 && data.customerId.size() < 100 &&
+             data.amount is number && data.amount > 0 &&
+             data.type in ['credit', 'payment'] &&
+             isValidDateString(data.date) &&
+             (!('description' in data) || (data.description is string && data.description.size() < 500));
+    }
+    
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
+                    ((isOwner(userId) && request.resource.data.role == 'user') || isAdmin()) &&
+                    uidUnchanged();
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && 
+                    ((isOwner(userId) && request.resource.data.role == resource.data.role) || isAdmin()) &&
+                    uidNotModified() &&
+                    request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isAdmin();
+    }
+    
+    match /bills/{billId} {
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId || isAdmin();
+      allow create: if isAuthenticated() && isValidBill(request.resource.data) && 
+                    request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && isValidBill(request.resource.data) && 
+                    isDocOwner() && request.resource.data.userId == resource.data.userId;
+      allow delete: if isAuthenticated() && isDocOwner() || isAdmin();
+    }
+
+    match /khataCustomers/{customerId} {
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId || isAdmin();
+      allow create: if isAuthenticated() && isValidKhataCustomer(request.resource.data) && 
+                    request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && isValidKhataCustomer(request.resource.data) && 
+                    isDocOwner() && request.resource.data.userId == resource.data.userId;
+      allow delete: if isAuthenticated() && isDocOwner() || isAdmin();
+    }
+
+    match /khataTransactions/{transactionId} {
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId || isAdmin();
+      allow create: if isAuthenticated() && isValidKhataTransaction(request.resource.data) && 
+                    request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && isValidKhataTransaction(request.resource.data) && 
+                    isDocOwner() && request.resource.data.userId == resource.data.userId &&
+                    request.resource.data.customerId == resource.data.customerId;
+      allow delete: if isAuthenticated() && isDocOwner() || isAdmin();
+    }
+  }
+}

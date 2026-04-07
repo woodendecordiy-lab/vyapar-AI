@@ -1,0 +1,80 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the SaaS application (shopkeeper).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "isSubscribed": { "type": "boolean" },
+        "subscriptionEndDate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "createdAt"]
+    },
+    "Bill": {
+      "title": "Bill",
+      "description": "A scanned or generated bill/invoice.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Owner of the bill" },
+        "totalAmount": { "type": "number" },
+        "taxAmount": { "type": "number" },
+        "items": { "type": "array", "items": { "type": "string" }, "description": "Serialized JSON of items" },
+        "imageUrl": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "paid", "audited"] },
+        "rawText": { "type": "string", "description": "Raw extracted text from OCR" }
+      },
+      "required": ["userId", "totalAmount", "date", "status"]
+    },
+    "KhataCustomer": {
+      "title": "Khata Customer",
+      "description": "A customer in the digital ledger (Khata).",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Owner of the khata" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "balance": { "type": "number", "description": "Positive means they owe money (udhaar)" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "balance", "lastUpdated"]
+    },
+    "KhataTransaction": {
+      "title": "Khata Transaction",
+      "description": "A single credit or payment transaction.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["credit", "payment"] },
+        "date": { "type": "string", "format": "date-time" },
+        "description": { "type": "string" }
+      },
+      "required": ["userId", "customerId", "amount", "type", "date"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles."
+    },
+    "/bills/{billId}": {
+      "schema": { "$ref": "#/entities/Bill" },
+      "description": "Stores bills and invoices."
+    },
+    "/khataCustomers/{customerId}": {
+      "schema": { "$ref": "#/entities/KhataCustomer" },
+      "description": "Stores khata customers."
+    },
+    "/khataTransactions/{transactionId}": {
+      "schema": { "$ref": "#/entities/KhataTransaction" },
+      "description": "Stores khata transactions."
+    }
+  }
+}

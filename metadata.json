@@ -1,0 +1,8 @@
+{
+  "name": "Vyapar AI",
+  "description": "Multilingual AI Business Assistant SaaS app for shopkeepers. Features a Voice Calculator and Smart Bill Scanner.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
