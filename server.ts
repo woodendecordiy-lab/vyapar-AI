@@ -29,6 +29,20 @@ async function startServer() {
   // API Routes
   app.post('/api/create-razorpay-order', async (req, res) => {
     try {
+      const key_id = process.env.RAZORPAY_KEY_ID;
+      const key_secret = process.env.RAZORPAY_KEY_SECRET;
+      
+      // Fallback to demo mode if keys are not provided
+      if (!key_id || !key_secret) {
+        console.log("Razorpay keys missing. Falling back to Demo Mode.");
+        return res.json({
+          id: `demo_order_${Date.now()}`,
+          amount: 49900,
+          currency: "INR",
+          isDemo: true
+        });
+      }
+
       const rzp = getRazorpay();
       
       const options = {

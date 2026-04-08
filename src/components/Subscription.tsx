@@ -69,6 +69,30 @@ export default function Subscription() {
         throw new Error(orderData.error);
       }
 
+      if (orderData.isDemo) {
+        // Simulate payment verification for demo mode
+        setVerifying(true);
+        setTimeout(async () => {
+          try {
+            const endDate = new Date();
+            endDate.setMonth(endDate.getMonth() + 1);
+            
+            await updateDoc(doc(db, 'users', user.uid), {
+              isSubscribed: true,
+              subscriptionEndDate: endDate.toISOString()
+            });
+            setIsSubscribed(true);
+          } catch (err) {
+            console.error("Demo verification error:", err);
+            setError("Demo payment failed.");
+          } finally {
+            setVerifying(false);
+            setLoading(false);
+          }
+        }, 1500);
+        return;
+      }
+
       const options = {
         key: import.meta.env.VITE_RAZORPAY_KEY_ID,
         amount: orderData.amount,
